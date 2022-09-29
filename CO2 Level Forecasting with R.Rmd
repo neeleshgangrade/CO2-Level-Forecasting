@@ -1,0 +1,76 @@
+---
+output:
+  pdf_document: default
+  html_document: default
+---
+
+---
+author: Neelesh Gangrade
+title: 'CO2 Level Forecasting'
+output: pdf_document
+---
+*Code for reading in data, creating a tsibble, and creating a training-set that excludes observations from January 2022 through August 2022.*
+
+```{r, message=FALSE}
+library(fpp3)
+remove(list = ls())
+temp=readr::read_csv("pset1.csv")
+ForecastingCO2=temp%>%mutate(Date=yearmonth(mdy(Date)))%>%
+  as_tsibble(index=Date)
+ForecastingCO2TRAIN=ForecastingCO2%>%filter_index("1958 Mar"~"2021 Dec")
+
+```
+
+*Code used to generate the seasonal naive forecast along with the numeric values from the forecast.*
+```{r, message=FALSE}
+ForecastingCO2TRAIN%>%model(SNAIVE(CO2))%>%
+  forecast(h=8)%>%as.data.frame()%>%select(Date,.mean)
+
+```
+
+*Code to produce two plots along with a brief discussion related to seasonality.* 
+```{r, message=FALSE}
+ForecastingCO2TRAIN%>%autoplot(CO2)+ylab("CO2 Level")
+ForecastingCO2TRAIN%>%gg_season(CO2)+ylab("Seasonality")
+
+```
+The series has a tendency to increase over time. This suggests possible positive trend.The growth rate appears to be roughly constant, although there could be some evidence that growth has been slightly higher after the mid-1990s.
+
+From the gg_season plot, every year we observe that CO2regularly begins increasing around October and continues to increase through about May. Subsequently, atmospheric CO2begins to decline, reaching a relatively low point during the late summer. As further discussed in class, the observed seasonal variation is likely explained by photosynthetic activity. As plants begin to die off in the fall, less CO2is absorbed, causing atmospheric CO2 to spike during the winter months and early spring.
+
+
+
+*A brief discussion indicating about selecting the seasonal naive or ETS method*
+
+The gradual increase in CO2throughout the sample suggests that a linear trend might be appropriate. In this regard, I choose additive trend. As for seasonality, as observed in the gg_season plot above, the seasonal patterns appear quite regular. Atmospheric CO2nearly always reaches its lowest point
+in October, with patterns that seem nearly redundant. It seems the simplest type of seasonality is preferred here, leading to the choice of additive seasonality. 
+```{r, message=FALSE}
+#Forecasting for ETS model
+
+CO2_ETSForecasting=ForecastingCO2TRAIN%>%
+  model(ETS(CO2~error("A")+trend("A")+season("A")))%>%forecast(h=8)%>%
+  as.data.frame()%>%select(Date,.mean)
+
+#Comparing both SNAIVE and ETS model
+mableTRAIN=ForecastingCO2TRAIN%>%
+  model(naiveCO2=SNAIVE(CO2),
+        ETSCO2=ETS(CO2~error("A")+trend("A")+season("A")))
+
+mableTRAIN%>%forecast(h=8)%>%
+  autoplot(filter_index(ForecastingCO2, "2019 Jan"~"2022 Aug"), level=NULL)
+
+```
+Unambiguously, the ETS model outperforms the seasonal naive model, with values that are closer to the true quantities throughout. For the last part, we proceed with the ETS model.
+
+
+*Code that used to determine if atmospheric CO2 will exceed 450 ppm, along with the necessary discussion.
+```{r, message=FALSE}
+FullData_ETSForecasting=ForecastingCO2%>%model(ETS(CO2~                                              error("A")+trend("A")+season("A")))%>%forecast(h=360)
+FullData_ETSForecasting
+  
+FullData_ETSForecasting%>%filter(.mean>=450)%>%
+  filter(row_number()==1)%>%as.data.frame()%>%
+           select(Date,.mean)
+
+```
+As we see, atmospheric CO2is first projected to exceed 450 ppm in April 2035, when our model predicts we will reach 451.3486 ppm.
